@@ -3,6 +3,8 @@ log/
 logs/
 trash/
 dsr_data/
+*.zip
+data/dataset_extras/
 .idea/
 copy_data.sh
 # Byte-compiled / optimized / DLL files

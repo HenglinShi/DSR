@@ -43,7 +43,7 @@ def convert_fixed_length_vector(valid_labels, method='dsr_mc'):
         labels = constants.DSR_MC_LABELS
     elif method == 'dsr_c':
         labels = constants.DSR_C_LABELS
-    label_vector = np.zeros((len(labels)), dtype=np.int)
+    label_vector = np.zeros((len(labels)), dtype='int')
     valid_index = [labels.index(val_label) for val_label in valid_labels]
     label_vector[valid_index] = 1
     return label_vector

@@ -1,5 +1,7 @@
 import os
-os.environ['PYOPENGL_PLATFORM'] = 'egl'
+import platform
+if not platform.system() == 'Windows':
+    os.environ['PYOPENGL_PLATFORM'] = 'egl'
 #os.environ['EGL_DEVICE_ID'] = os.environ['GPU_DEVICE_ORDINAL'].split(',')[0] \
 #    if 'GPU_DEVICE_ORDINAL' in os.environ.keys() else '0'
 
@@ -97,6 +99,11 @@ class Renderer:
         if kp_2d is not None: nrow += 1
 
         rend_imgs = make_grid(rend_imgs, nrow=nrow)
+
+        import matplotlib.pyplot as plt
+        plt.imshow((rend_imgs.cpu().numpy().transpose(1, 2, 0) * 255).astype('uint8'))
+        plt.show()
+
         return rend_imgs
 
     def __call__(self, vertices, camera_translation, image, sideview=False):
@@ -172,7 +179,8 @@ def draw_skeleton(image, kp_2d, dataset='common', unnormalize=True, thickness=2)
     # common_lr = [0,0,1,1,0,0,0,0,1,0,0,1,1,1,0]
     for idx, pt in enumerate(kp_2d):
         # if pt[2] > 0: # if visible
-        cv2.circle(image, (pt[0], pt[1]), 4, pcolor, -1)
+        if pt[0] >= 0 and pt[1] >= 0 and pt[1] < 224 and pt[0] < 224:
+            cv2.circle(image, (pt[0], pt[1]), 4, pcolor, -1)
         # cv2.putText(image, f'{idx}', (pt[0]+1, pt[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0))
 
     for i,(j1,j2) in enumerate(skeleton):
@@ -181,8 +189,12 @@ def draw_skeleton(image, kp_2d, dataset='common', unnormalize=True, thickness=2)
         #     color = rcolor if common_lr[i] == 0 else lcolor
         # else:
         color = lcolor if i % 2 == 0 else rcolor
-        pt1, pt2 = (kp_2d[j1, 0], kp_2d[j1, 1]), (kp_2d[j2, 0], kp_2d[j2, 1])
-        cv2.line(image, pt1=pt1, pt2=pt2, color=color, thickness=thickness)
+        if kp_2d[j1, 0] >= 0 and kp_2d[j1, 0] < 224 and \
+                kp_2d[j1, 1] >=0 and kp_2d[j1, 1] < 224 and \
+                kp_2d[j2, 0] >=0 and kp_2d[j2, 0] < 224 and \
+                kp_2d[j2, 1] >=0 and kp_2d[j2, 1] < 224:
+            pt1, pt2 = (kp_2d[j1, 0], kp_2d[j1, 1]), (kp_2d[j2, 0], kp_2d[j2, 1])
+            cv2.line(image, pt1=pt1, pt2=pt2, color=color, thickness=thickness)
 
     image = np.asarray(image, dtype=float) / 255
     return image

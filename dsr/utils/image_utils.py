@@ -198,6 +198,10 @@ def flip_kp(kp):
         flipped_parts = constants.J24_FLIP_PERM
     elif len(kp) == 49:
         flipped_parts = constants.J49_FLIP_PERM
+    elif len(kp) == 43:
+        flipped_parts = constants.J43_FLIP_PERM
+    elif len(kp) == 18:
+        flipped_parts = constants.J18_FLIP_PERM
     kp = kp[flipped_parts]
     kp[:, 0] = - kp[:, 0]
     return kp

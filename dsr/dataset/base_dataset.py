@@ -18,7 +18,7 @@ from ..semantic_rendering.data_utils import get_dsr_mc_probPrior, get_dsr_c_prob
 from ..semantic_rendering.data_utils import convert_fixed_length_vector
 from ..semantic_rendering.loss import get_distance_matrix
 from ..semantic_rendering.constants import DSR_C_LABELS, DSR_C_LABELS_MAP
-
+import matplotlib.pyplot as plt
 
 class BaseDataset(Dataset):
     """
@@ -40,11 +40,17 @@ class BaseDataset(Dataset):
         logger.info(f'Loading npz file from {ds_file}...')
         self.data = np.load(ds_file)
         self.smpl = SMPL(SMPL_MODEL_DIR, batch_size=1, create_transl=False)
-        self.imgname = self.data['imgname']
+        self.imgname = np.char.add('images/', self.data['imgname'])
 
         if self.method == 'dsr' and self.is_train == True:
             # initialize graphonomy filenames
-            grphnames = self.data['imgname']
+            if dataset == 'ima':
+                self.grphnames = self.data['imgname']
+                self.videonames = self.data['video_name']
+                grphnames = np.char.add(np.char.add(self.videonames, '/'), self.grphnames)
+            else:
+                grphnames = self.data['imgname']
+
             if grphnames[0].endswith('jpg'):
                 grphnames = np.char.strip(grphnames, 'jpg')
                 grphnames = np.char.add(grphnames, 'png')
@@ -68,6 +74,7 @@ class BaseDataset(Dataset):
         # Get paths to gt masks, if available
         try:
             self.maskname = self.data['maskname']
+            # TODO
         except KeyError:
             pass
         try:
@@ -107,6 +114,31 @@ class BaseDataset(Dataset):
         # Get 2D keypoints
         try:
             keypoints_gt = self.data['part']
+            if self.dataset == 'ima':
+                JOINT_NAMES_IMA = [
+                    'Left Hip', #'left_hip',         #0
+                    'Left Eye', #'left_eye',         #1
+                    'Left Knee', #'left_knee',        #2
+                    'Left Elbow', #'left_elbow',       #3
+                    'Neck (LSP)', #'neck',             #4
+                    'Right Elbow', #'right_elbow',      #5
+                    'Right Knee', #'right_knee',       #6
+                    'Left Ear', #'left_ear',         #7
+                    'Right Shoulder', #'right_shoulder',   #8
+                    'Right Ear', #'right_ear',        #9
+                    'Left Wrist', #'left_wrist',       #10
+                    'Left Shoulder', #'left_shoulder',    #11
+                    'Left Ankle', #'left_ankle',       #12
+                    'Right Eye', #'right_eye',        #13
+                    'Right Wrist', #'right_wrist',      #14
+                    'Right Hip', #'right_hip',        #15
+                    'Right Ankle', #'right_ankle',      #16
+                    'Nose', #'nose',             #17
+                ]
+                ima_inds = np.array([constants.JOINT_NAMES.index(key) for key in JOINT_NAMES_IMA])-25
+                keypoints_gt_ext = np.zeros((len(self.imgname), 24, 3))
+                keypoints_gt_ext[:, ima_inds,:] = keypoints_gt
+                keypoints_gt = keypoints_gt_ext
         except KeyError:
             keypoints_gt = np.zeros((len(self.imgname), 24, 3))
         try:
@@ -222,11 +254,29 @@ class BaseDataset(Dataset):
         pose = pose.astype('float32')
         return pose
 
+    def vis_keypoints(self, img, kps, alpha=1):
+        # Convert from plt 0-1 RGBA colors to 0-255 BGR colors for opencv.
+        cmap = plt.get_cmap('rainbow')
+        colors = [cmap(i) for i in np.linspace(0, 1, len(kps) + 2)]
+        colors = [(c[2] * 255, c[1] * 255, c[0] * 255) for c in colors]
+
+        # Perform the drawing on a copy of the image, to allow for blending.
+        kp_mask = np.copy(img)
+
+        # Draw the keypoints.
+        for i in range(len(kps)):
+            p = kps[i][0].astype(np.int32), kps[i][1].astype(np.int32)
+            cv2.circle(kp_mask, p, radius=3, color=colors[i], thickness=-1, lineType=cv2.LINE_AA)
+
+        # Blend the keypoints.
+        return cv2.addWeighted(img, 1.0 - alpha, kp_mask, alpha, 0)
+
     def __getitem__(self, index):
         item = {}
         scale = self.scale[index].copy()
         center = self.center[index].copy()
         keypoints = self.keypoints[index].copy()
+        keypoints[np.isnan(keypoints)] = 0
 
         # Get augmentation parameters
         flip, pn, rot, sc = self.augm_params()
@@ -238,6 +288,13 @@ class BaseDataset(Dataset):
             img = cv2.imread(imgname)[:,:,::-1].copy().astype(np.float32)
         except TypeError:
             logger.info(imgname)
+
+
+        if self.options.DEBUG is True:
+            plt.close('all')
+            plt.imshow(img.astype('uint8'))
+            plt.show()
+
         orig_shape = np.array(img.shape)[:2]
 
         if self.method == 'dsr' and self.is_train ==True:
@@ -247,8 +304,17 @@ class BaseDataset(Dataset):
             except TypeError:
                 logger.info(grphname)
                 grph = np.zeros_like(img)
-            grph = self.rgb_processing(grph, center, sc*scale, rot, flip, np.ones(3))
 
+            if self.options.DEBUG is True:
+                plt.close('all')
+                plt.imshow(grph.astype('uint8'))
+                plt.show()
+
+            grph = self.rgb_processing(grph, center, sc*scale, rot, flip, np.ones(3))
+            if self.options.DEBUG is True:
+                plt.close('all')
+                plt.imshow((255 * grph.transpose([1,2,0])).astype('uint8'))
+                plt.show()
         # Get SMPL parameters, if available
         if self.has_smpl[index]:
             pose = self.pose[index].copy()
@@ -262,6 +328,18 @@ class BaseDataset(Dataset):
 
         # Process image
         img = self.rgb_processing(img, center, sc*scale, rot, flip, pn, keypoints)
+
+        if self.options.DEBUG is True:
+            plt.close('all')
+            debug_img = (img.transpose([1, 2, 0]) * 255).astype('uint8')
+            debug_kpt = keypoints[keypoints[:, 2] == 1, :]
+            debug_kpt = 0.5 * self.options.IMG_RES * (keypoints[:, :-1] + 1)
+            debug_img = self.vis_keypoints(debug_img, debug_kpt)
+
+            plt.imshow(debug_img)
+            plt.show()
+
+
         img = torch.from_numpy(img).float()
 
         # Store image before normalization to use it in visualization
@@ -303,12 +381,48 @@ class BaseDataset(Dataset):
 
             # Get graphonomy data - SR-Pixel
             grph_dsr_mc_gt, valid_labels_dsr_mc, _ = convert_grph_to_binary_mask(grph, True, True, gt_keypoints_2d_np)
+
+            if self.options.DEBUG is True:
+                plt.close('all')
+                debug_img = np.ascontiguousarray(grph_dsr_mc_gt * 255, dtype=np.uint8)
+                #debug_kpt = keypoints[keypoints[:, 2] == 1, :]
+                debug_kpt = gt_keypoints_2d_orig[:, :-1].detach().cpu().numpy()
+                debug_img = self.vis_keypoints(debug_img, debug_kpt)
+
+                plt.imshow(debug_img)
+                plt.show()
+
+
             smpl_textures_dsr_mc_gt = get_dsr_mc_probPrior(valid_labels_dsr_mc)
             grph_dsr_mc_dist_mat = get_distance_matrix(grph_dsr_mc_gt)
+
+            if self.options.DEBUG is True:
+                plt.close('all')
+                debug_img = np.ascontiguousarray(grph_dsr_mc_dist_mat, dtype=np.uint8)
+                #debug_kpt = keypoints[keypoints[:, 2] == 1, :]
+                debug_kpt = gt_keypoints_2d_orig[:, :-1].detach().cpu().numpy()
+                debug_img = self.vis_keypoints(debug_img, debug_kpt)
+
+                plt.imshow(debug_img)
+                plt.show()
+
 
             # Get graphonomy data - SR-Vertex
             grph_dsr_c_gt, valid_labels_dsr_c, class_weight = convert_grph_to_labels(grph, gt_keypoints_2d_np, \
                                             True, DSR_C_LABELS_MAP, DSR_C_LABELS)
+
+            if self.options.DEBUG is True:
+                plt.close('all')
+                debug_img = np.ascontiguousarray(grph_dsr_c_gt * 20, dtype=np.uint8)
+                # debug_kpt = keypoints[keypoints[:, 2] == 1, :]
+                debug_kpt = gt_keypoints_2d_orig[:, :-1].detach().cpu().numpy()
+                debug_img = self.vis_keypoints(debug_img, debug_kpt)
+
+                plt.imshow(debug_img)
+                plt.show()
+
+
+
             smpl_textures_dsr_c_gt = get_dsr_c_probPrior(True, DSR_C_LABELS_MAP)
 
             # Combine Silheoute and Probability to be used as texture

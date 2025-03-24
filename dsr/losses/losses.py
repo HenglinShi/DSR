@@ -7,11 +7,13 @@ from loguru import logger
 from ..models import SMPL
 from ..core import constants
 from ..core.config import SMPL_MODEL_DIR
+from ..utils.eval_utils import vis_keypoints
 from ..utils.geometry import batch_rodrigues
+from ..utils.eval_utils import vis_keypoints
 
 from ..semantic_rendering.data_utils import convert_valid_labels, convert_camT_to_proj_mat
 from ..semantic_rendering.loss import dsr_mc_loss
-
+import matplotlib.pyplot as plt
 class HMRLoss(nn.Module):
     def __init__(
             self,
@@ -127,6 +129,7 @@ class DSRLoss(nn.Module):
             sigma_val=1.0e-7,
             baseline=False,
             dsr_mc_loss_type='DistM',
+            debug=False
     ):
         super(DSRLoss, self).__init__()
         self.criterion_shape = nn.L1Loss()
@@ -153,12 +156,13 @@ class DSRLoss(nn.Module):
         self.dsr_mc_loss_type = 'nIOU' if self.baseline else dsr_mc_loss_type
         smpl = SMPL(SMPL_MODEL_DIR, batch_size=1, create_transl=False)
         self.smpl_faces = torch.from_numpy(smpl.faces.astype('int32'))[None].cuda()
-
+        self.DEBUG = debug
         self.dsr_mc_loss_weight = dsr_mc_loss_weight
         self.dsr_c_loss_weight = dsr_c_loss_weight
 
     def sr_losses(self, gt_batch, vertices, textures, cam_t, dsr_mc_dist_mat, dsr_c_img_label, \
-                  dsr_mc_img_label, valid_labels_dsr_mc, valid_labels_dsr_c, dsr_c_class_weight, start_dsr):
+                  dsr_mc_img_label, valid_labels_dsr_mc, valid_labels_dsr_c, dsr_c_class_weight, start_dsr,
+                  smpl_joints2d=None):
 
         def de_norm(images):
             images = images * torch.tensor([0.229, 0.224, 0.225], \
@@ -269,6 +273,47 @@ class DSRLoss(nn.Module):
                 rend_dsr_c = cur_rend_out[1:,:3].mean(1).unsqueeze(0)
                 loss_dsr_c[idx] = self.criterion_dsr_c(rend_dsr_c, cur_dsr_c_img_label)
 
+                if self.DEBUG:
+
+                    img_debug = gt_batch['img'][idx, ...].cpu().numpy() * np.array(constants.IMG_NORM_STD)[:, None,
+                                                                          None] + np.array(constants.IMG_NORM_MEAN)[:,
+                                                                                  None, None]
+                    img_debug = img_debug.transpose([1, 2, 0])
+                    plt.close('all')
+                    fig, axs = plt.subplots(2, 4)
+                    axs[0, 0].imshow((img_debug * 255).astype('uint8'))
+                    axs[0, 1].imshow(gt_batch['grph'][idx, ...].cpu().numpy().transpose([1, 2, 0]))
+                    axs[0, 2].imshow(cur_dsr_mc_img_label[0, ...].cpu().numpy())
+                    axs[0, 3].imshow(cur_dsr_c_img_label.cpu().numpy().transpose([1, 2, 0]))
+
+                    debug_mc_mask = np.ascontiguousarray(rend_dsr_mc[3].detach().cpu().numpy() * 255, dtype='uint8')
+                    debug_mc_render = np.ascontiguousarray(rend_dsr_mc[:3].mean(0).detach().cpu().numpy() * 255,
+                                                           dtype='uint8')
+                    if smpl_joints2d is not None:
+                        debug_kpt2d = 0.5 * 224 * (smpl_joints2d[idx, 25:, :].detach().cpu().numpy() + 1)
+                        debug_mc_mask = vis_keypoints(debug_mc_mask, debug_kpt2d)
+                        debug_mc_render = vis_keypoints(debug_mc_render, debug_kpt2d)
+
+                    axs[1,0].imshow(debug_mc_mask)
+                    axs[1,1].imshow(debug_mc_render)
+
+                    debug_c_render1 = rend_dsr_c[0, 0, ...]
+                    debug_c_render2 = rend_dsr_c[0, 3, ...]
+                    debug_c_render1 = np.ascontiguousarray(debug_c_render1.detach().cpu().numpy() * 255, dtype='uint8')
+                    debug_c_render2 = np.ascontiguousarray(debug_c_render2.detach().cpu().numpy() * 255, dtype='uint8')
+
+                    if smpl_joints2d is not None:
+                        debug_kpt2d = 0.5 * 224 * (smpl_joints2d[idx, 25:, :].detach().cpu().numpy() + 1)
+                        debug_c_render1 = vis_keypoints(debug_c_render1, debug_kpt2d)
+                        debug_c_render2 = vis_keypoints(debug_c_render2, debug_kpt2d)
+                    axs[1, 2].imshow(debug_c_render1)
+                    axs[1, 3].imshow(debug_c_render1)
+                    fig.set_figheight(30)
+                    fig.set_figwidth(30)
+                    plt.show()
+
+
+
             if torch.isnan(loss_dsr_c[idx]) or torch.isnan(loss_dsr_mc[idx]) or \
                torch.isinf(loss_dsr_c[idx]) or torch.isinf(loss_dsr_mc[idx]):
                 imgs, imgname, grphs = gt_batch['img'], gt_batch['imgname'], gt_batch['grph']
@@ -321,6 +366,7 @@ class DSRLoss(nn.Module):
             gt_valid_labels_dsr_c,
             gt_dsr_c_class_weight,
             start_dsr,
+            pred['smpl_joints2d']
         )
 
         # Compute loss on SMPL parameters

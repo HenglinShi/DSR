@@ -7,6 +7,8 @@ import joblib
 import numpy as np
 from loguru import logger
 import pytorch_lightning as pl
+import sys
+sys.path.insert(0,'smplx')
 from smplx import SMPL as SMPL_native
 from torch.utils.data import DataLoader
 
@@ -25,12 +27,15 @@ class LitModule(pl.LightningModule):
     def __init__(self, hparams):
         super(LitModule, self).__init__()
 
-        self.hparams = hparams
+        #self.hparams = hparams
+        for key in hparams.keys():
+            self.hparams[key] = hparams[key]
 
         if self.hparams.METHOD == 'dsr':
             from ..models import HMR
             from ..losses import DSRLoss
             self.model = HMR(
+                smpl_model_type=self.hparams.SMPL_MODEL_TYPE,
                 backbone=self.hparams.DSR.BACKBONE,
                 img_res=self.hparams.DATASET.IMG_RES,
                 pretrained=self.hparams.TRAINING.PRETRAINED,
@@ -48,6 +53,7 @@ class LitModule(pl.LightningModule):
                 gamma_val=self.hparams.DSR.GAMMA_VAL,
                 sigma_val=self.hparams.DSR.SIGMA_VAL,
                 dsr_mc_loss_type=self.hparams.DSR.DSR_MC_LOSS_TYPE,
+                debug=self.hparams.DSR.DEBUG,
             )
         elif self.hparams.METHOD == 'spin' or self.hparams.DATASET.ONLY_IUV == True:
             from ..models import HMR
@@ -256,6 +262,8 @@ class LitModule(pl.LightningModule):
         )
 
         if self.pl_logging == True:
+            tb_logger = self.logger
+
             tb_logger.experiment.add_image('pred_shape', images_pred, self.global_step)
             tb_logger.experiment.add_image('gt_shape', images_gt, self.global_step)
 
@@ -369,6 +377,7 @@ class LitModule(pl.LightningModule):
         )
 
         if self.pl_logging == True:
+            tb_logger = self.logger
             tb_logger.experiment.add_image('val_pred_shape', images_pred, self.global_step)
 
         if self.hparams.TESTING.SAVE_IMAGES == True:
@@ -381,11 +390,11 @@ class LitModule(pl.LightningModule):
                 cv2.cvtColor(images_pred, cv2.COLOR_BGR2RGB)
             )
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
 
         if self.pl_logging == True:
-            tb_logger = self.logger[0]
-            comet_logger = self.logger[1]
+            tb_logger = self.logger#[0]
+            #comet_logger = self.logger[1]
 
         self.val_mpjpe = np.array(self.val_mpjpe)
         self.val_pampjpe = np.array(self.val_pampjpe)

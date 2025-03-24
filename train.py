@@ -55,18 +55,18 @@ def main(hparams):
 
     # most basic trainer, uses good defaults (1 gpu)
     trainer = pl.Trainer(
-        gpus=1,
+        devices=1,
         logger=tb_logger,
         max_epochs=hparams.TRAINING.MAX_EPOCHS,
-        log_save_interval=hparams.TRAINING.LOG_SAVE_INTERVAL,
-        terminate_on_nan=True,
+        log_every_n_steps=hparams.TRAINING.LOG_SAVE_INTERVAL,
+        detect_anomaly=True,
         default_root_dir=log_dir,
         check_val_every_n_epoch=hparams.TRAINING.CHECK_VAL_EVERY_N_EPOCH,
-        checkpoint_callback=ckpt_callback,
-        reload_dataloaders_every_epoch=hparams.TRAINING.RELOAD_DATALOADERS_EVERY_EPOCH,
-        resume_from_checkpoint=hparams.TRAINING.RESUME,
+        enable_checkpointing=ckpt_callback,
+        reload_dataloaders_every_n_epochs=hparams.TRAINING.RELOAD_DATALOADERS_EVERY_EPOCH,
+        # resume_from_checkpoint=hparams.TRAINING.RESUME,
         num_sanity_val_steps=0,
-        log_gpu_memory=True,
+        # log_gpu_memory=True,
     )
 
     if hparams.RUN_TEST:
@@ -74,7 +74,7 @@ def main(hparams):
         trainer.test(model=model)
     else:
         logger.info('*** Started training ***')
-        trainer.fit(model)
+        trainer.fit(model)#, ckpt_path=hparams.TRAINING.RESUME)
         trainer.test()
 
 

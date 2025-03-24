@@ -6,6 +6,8 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+import cv2
 
 def compute_similarity_transform(S1, S2):
     """
@@ -121,3 +123,20 @@ def reconstruction_errori_old(S1, S2, reduction='mean'):
     elif reduction == 'sum':
         re = re.sum()
     return re
+
+def vis_keypoints(img, kps, alpha=1):
+    # Convert from plt 0-1 RGBA colors to 0-255 BGR colors for opencv.
+    cmap = plt.get_cmap('rainbow')
+    colors = [cmap(i) for i in np.linspace(0, 1, len(kps) + 2)]
+    colors = [(c[2] * 255, c[1] * 255, c[0] * 255) for c in colors]
+
+    # Perform the drawing on a copy of the image, to allow for blending.
+    kp_mask = np.copy(img)
+
+    # Draw the keypoints.
+    for i in range(len(kps)):
+        p = kps[i][0].astype(np.int32), kps[i][1].astype(np.int32)
+        cv2.circle(kp_mask, p, radius=3, color=colors[i], thickness=-1, lineType=cv2.LINE_AA)
+
+    # Blend the keypoints.
+    return cv2.addWeighted(img, 1.0 - alpha, kp_mask, alpha, 0)

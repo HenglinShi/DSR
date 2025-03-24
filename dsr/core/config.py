@@ -11,6 +11,7 @@ from functools import reduce
 from yacs.config import CfgNode as CN
 from typing import Dict, List, Union, Any
 from flatten_dict import flatten, unflatten
+import platform
 
 ##### CONSTANTS #####
 DATASET_NPZ_PATH = 'dsr_data/dataset_extras'
@@ -19,11 +20,23 @@ H36M_ROOT = 'dsr_data/dataset_folders/h36m'
 COCO_ROOT = 'dsr_data/dataset_folders/coco'
 MPI_INF_3DHP_ROOT = 'dsr_data/dataset_folders/mpi_inf_3dhp'
 PW3D_ROOT = 'dsr_data/dataset_folders/3dpw'
+if platform.system() == 'Windows':
+    IMA_ROOT = 'D:/work/data/IMA'
+elif platform.system() == 'Linux':
+    IMA_ROOT = '/proj/berzelius-2024-331/users/x_hensh/data/Youtube-Infant-Body-Parsing'
+
 
 JOINT_REGRESSOR_TRAIN_EXTRA = 'dsr_data/J_regressor_extra.npy'
 JOINT_REGRESSOR_H36M = 'dsr_data/J_regressor_h36m.npy'
 SMPL_MEAN_PARAMS = 'dsr_data/smpl_mean_params.npz'
+SMPL_MODEL_TYPE = 'SMIL'
+if platform.system() == 'Windows':
+    SMIL_MODEL_DIR = 'D:/work/PycharmProjects/PythonProject/PythonProject/OSX/common/utils/human_model_files/smil'
+elif platform.system() == 'Linux':
+    SMIL_MODEL_DIR = '../OSX/common/utils/human_model_files/smil'
 SMPL_MODEL_DIR = 'dsr_data/smpl'
+
+
 
 OPENPOSE_PATH = 'datasets/openpose'
 
@@ -34,6 +47,7 @@ DATASET_FOLDERS = {
     'mpi-inf-3dhp': MPI_INF_3DHP_ROOT,
     'coco': COCO_ROOT,
     '3dpw': PW3D_ROOT,
+    'ima': IMA_ROOT,
 }
 
 DATASET_FILES = [
@@ -42,12 +56,14 @@ DATASET_FILES = [
         'h36m-p2': 'h36m_valid_protocol2.npz',
         'mpi-inf-3dhp': 'mpi_inf_3dhp_valid.npz',
         '3dpw': '3dpw_test_with_mmpose.npz',
+        'ima': 'ima_test.npz'
     },
     {
         'h36m': 'h36m_train.npz',
         'coco': 'coco_2014_train.npz',
         'mpi-inf-3dhp': 'mpi_inf_3dhp_train.npz',
         '3dpw': '3dpw_train.npz',
+        'ima': 'ima_train.npz'
     }
 ]
 
@@ -62,6 +78,9 @@ hparams.EXP_ID = ''
 hparams.RUN_TEST = False
 hparams.SEED_VALUE = -1
 hparams.PL_LOGGING = True
+hparams.SMPL_MODEL_TYPE = SMPL_MODEL_TYPE
+hparams.SMPL_MODEL_DIR = SMPL_MODEL_DIR
+hparams.SMIL_MODEL_DIR = SMIL_MODEL_DIR
 
 # Dataset hparams
 hparams.DATASET = CN()
@@ -83,6 +102,7 @@ hparams.DATASET.ONLY_IUV = False
 hparams.DATASET.MESH_COLOR = 'light_pink'
 hparams.DATASET.GENDER_EVAL = True
 hparams.DATASET.TRAIN_3DPW = False
+hparams.DATASET.DEBUG = False
 
 # optimizer config
 hparams.OPTIMIZER = CN()
@@ -142,6 +162,7 @@ hparams.DSR.GAMMA_VAL = 1.0e-1
 hparams.DSR.SIGMA_VAL = 1.0e-7
 hparams.DSR.DSR_MC_LOSS_TYPE = 'DistM'
 hparams.DSR.START_DSR = -1
+hparams.DSR.DEBUG = False
 
 def get_hparams_defaults():
     """Get a yacs hparamsNode object with default values for my_project."""
@@ -229,7 +250,7 @@ def run_grid_search_experiments(
         cfg_file,
         script='main.py',
 ):
-    cfg = yaml.load(open(cfg_file))
+    cfg = yaml.load(open(cfg_file), Loader=yaml.FullLoader)
 
     # parse config file to get a list of configs and related hyperparameters
     different_configs, hyperparams = get_grid_search_configs(
