@@ -768,6 +768,106 @@ def get_smpl_neighbor_triplets():
     ]
 
 
+import sys
+sys.path.insert(0,'smplx')
+from smplx.joint_names import SMPL_JOINT_NAMES
+from ..core import constants
+
+def get_smillocal_skeleton():
+    skeletons_smil = get_smpl_skeleton()
+    joints = [constants.JOINT_MAP[i] for i in constants.JOINT_NAMES]
+    #print (0)
+
+
+    skeleton_map = np.array(
+        [
+            [0, 1],
+            [0, 15],
+            [0, 16],
+            [1, 2],
+            [1, 5],
+            [2, 3],
+            [3, 4],
+            [5, 6],
+            [6, 7],
+            [1, 8],
+            [8, 9],
+            [8, 12],
+            [9, 10],
+            [10, 11],
+            [11, 24],
+            [11, 22],
+            [22, 23],
+            [12, 13],
+            [13, 14],
+            [14, 21],
+            [14, 19],
+        ]
+    )
+    skeleton_map = np.concatenate((skeleton_map, get_smilima_skeleton()), axis=0)
+    return get_smilima_skeleton()#skeleton_map
+
+
+
+
+
+
+
+
+def get_smilima_skeleton():
+    #skeletons_native_smpl = get_native_smpl_skeleton()
+    JOINT_IDS = {SMPL_JOINT_NAMES[i]: i for i in range(len(SMPL_JOINT_NAMES))}
+    JOINT_NAMES_IMA = [
+                    'Left Hip', #'left_hip',         #0
+                    'Left Eye', #'left_eye',         #1
+                    'Left Knee', #'left_knee',        #2
+                    'Left Elbow', #'left_elbow',       #3
+                    'Neck (LSP)', #'neck',             #4
+                    'Right Elbow', #'right_elbow',      #5
+                    'Right Knee', #'right_knee',       #6
+                    'Left Ear', #'left_ear',         #7
+                    'Right Shoulder', #'right_shoulder',   #8
+                    'Right Ear', #'right_ear',        #9
+                    'Left Wrist', #'left_wrist',       #10
+                    'Left Shoulder', #'left_shoulder',    #11
+                    'Left Ankle', #'left_ankle',       #12
+                    'Right Eye', #'right_eye',        #13
+                    'Right Wrist', #'right_wrist',      #14
+                    'Right Hip', #'right_hip',        #15
+                    'Right Ankle', #'right_ankle',      #16
+                    'Nose', #'nose',             #17
+                ]
+
+    skeleton = np.array(
+        [
+            [0, 2],
+            [0, 15],
+            [0, 11],
+            [1, 17],
+            [1, 7],
+            [2, 12],
+            [3, 10],
+            [3, 11],
+            [4, 17],
+            [4, 8],
+            [4, 11],
+            [5, 8],
+            [5, 14],
+            [6, 15],
+            [6, 16],
+            [8, 15],
+            [9, 13],
+            [13, 17],
+        ]
+    )
+    ima_inds = np.array([constants.JOINT_NAMES.index(key) for key in JOINT_NAMES_IMA])
+
+    skeleton = [[ima_inds[i[0]], ima_inds[i[1]]] for i in skeleton]
+
+    return skeleton
+
+
+
 def get_smpl_skeleton():
     return np.array(
         [

@@ -10,11 +10,12 @@ import pytorch_lightning as pl
 import sys
 sys.path.insert(0,'smplx')
 from smplx import SMPL as SMPL_native
+from smplx import SMIL as SMIL_native
 from torch.utils.data import DataLoader
 
 from . import config
 from . import constants
-from ..models import SMPL
+from ..models import SMPL,SMIL
 from ..utils.renderer import Renderer
 from ..utils.eval_utils import reconstruction_error, compute_error_verts
 from ..utils.dataloader import CheckpointDataLoader
@@ -76,17 +77,42 @@ class LitModule(pl.LightningModule):
             logger.error(f'{self.hparams.METHOD} is undefined!')
             exit()
 
-        self.smpl = SMPL(
-            config.SMPL_MODEL_DIR,
-            batch_size=self.hparams.DATASET.BATCH_SIZE,
-            create_transl=False
-        )
 
-        self.smpl_native = SMPL_native(
-            config.SMPL_MODEL_DIR,
-            batch_size=self.hparams.DATASET.BATCH_SIZE,
-            create_transl=False
-        )
+        if self.hparams.SMPL_MODEL_TYPE == 'SMPL':
+            self.smpl = SMPL(
+                config.SMPL_MODEL_DIR,
+                batch_size=self.hparams.DATASET.BATCH_SIZE,
+                create_transl=False
+            )
+
+            self.smpl_native = SMPL_native(
+                config.SMPL_MODEL_DIR,
+                batch_size=self.hparams.DATASET.BATCH_SIZE,
+                create_transl=False
+            )
+        elif self.hparams.SMPL_MODEL_TYPE == 'SMIL':
+            self.smpl = SMIL(
+                config.SMIL_MODEL_DIR,
+                batch_size=self.hparams.DATASET.BATCH_SIZE,
+                create_transl=False
+            )
+
+            self.smpl_native = SMIL_native(
+                config.SMIL_MODEL_DIR,
+                batch_size=self.hparams.DATASET.BATCH_SIZE,
+                create_transl=False
+            )
+
+        if self.hparams.SMPL_MODEL_TYPE == 'SMIL':
+            if self.hparams.DATASET.TRAIN_DS == 'ima':
+                self.train_gt_skeleton_map = 'smilima'
+                self.train_pred_skeleton_map = 'smillocal'
+            if self.hparams.DATASET.VAL_DS == 'ima':
+                self.valid_gt_skeleton_map = 'smilima'
+                self.valid_pred_skeleton_map = 'smillocal'
+        else:
+            raise NotImplementedError()
+
 
         self.renderer = Renderer(
             focal_length=self.hparams.DATASET.FOCAL_LENGTH,
@@ -116,6 +142,7 @@ class LitModule(pl.LightningModule):
         self.val_mpjpe = [] # np.zeros(len(self.val_ds))
         self.val_pampjpe = [] # np.zeros(len(self.val_ds))
         self.val_v2v = []
+        self.rpj = []
 
         # This dict is used to store metrics and metadata for a more detailed analysis
         # per-joint, per-sequence, occluded-sequences etc.
@@ -125,6 +152,7 @@ class LitModule(pl.LightningModule):
             'mpjpe': [], # np.zeros((len(self.val_ds), 14)),
             'pampjpe': [], # np.zeros((len(self.val_ds), 14)),
             'v2v': [],
+            'rpj': []
         }
 
         # use this to save the errors for each image
@@ -182,19 +210,23 @@ class LitModule(pl.LightningModule):
             img_size=self.hparams.DATASET.IMG_RES,
         )
 
+        pred = self.model(inputs)
+
+        camera_center = torch.zeros(batch_size, 2, device=self.device)
+
         batch['gt_cam_t'] = gt_cam_t
         batch['vertices'] = gt_vertices
 
-        camera_center = torch.zeros(batch_size, 2, device=self.device)
-        gt_keypoints_2d = perspective_projection(
-            gt_model_joints,
-            rotation=torch.eye(3, device=self.device).unsqueeze(0).expand(batch_size, -1, -1),
-            translation=gt_cam_t,
-            focal_length=self.hparams.DATASET.FOCAL_LENGTH,
-            camera_center=camera_center,
-        )
 
-        gt_keypoints_2d = gt_keypoints_2d / (self.hparams.DATASET.IMG_RES / 2.)
+        #gt_keypoints_2d = perspective_projection(
+        #    gt_model_joints,
+        #    rotation=torch.eye(3, device=self.device).unsqueeze(0).expand(batch_size, -1, -1),
+        #    translation=gt_cam_t,
+        #    focal_length=self.hparams.DATASET.FOCAL_LENGTH,
+        #    camera_center=camera_center,
+        #)
+
+        #gt_keypoints_2d = gt_keypoints_2d / (self.hparams.DATASET.IMG_RES / 2.)
 
         gt_native_model_joints = self.smpl_native(
             betas=gt_betas,
@@ -211,10 +243,9 @@ class LitModule(pl.LightningModule):
         )
         # Normalize keypoints to [-1,1]
         gt_smpl_keypoints_2d = gt_smpl_keypoints_2d / (self.hparams.DATASET.IMG_RES / 2.)
-        batch['smpl_keypoints'] = gt_smpl_keypoints_2d
+        batch['smpl_native_keypoints_2d'] = gt_smpl_keypoints_2d
 
-        # Forward pass
-        pred = self.model(inputs)
+
 
         if self.hparams.DSR.START_DSR > -1:
             self.start_dsr = (self.current_epoch > self.hparams.DSR.START_DSR)
@@ -240,8 +271,10 @@ class LitModule(pl.LightningModule):
         pred_cam_t = output['pred_cam_t'].detach()
         gt_cam_t = input_batch['gt_cam_t']
 
-        pred_kp_2d = output['pred_kp2d'].detach() if 'pred_kp2d' in output.keys() else None
-        gt_kp_2d = input_batch['smpl_keypoints']
+        #pred_kp_2d = output['pred_kp2d'].detach() if 'pred_kp2d' in output.keys() else None
+        pred_kp_2d = output['smpl_joints2d'].detach()
+        gt_kp_2d = input_batch['smpl_native_keypoints_2d']
+        gt_kp_2d = input_batch['keypoints']
 
         grphs = input_batch['grph'] if 'grph' in input_batch.keys() else None
         sr_rend = output['sr_rend'].detach() if 'sr_rend' in output.keys() else None
@@ -250,7 +283,8 @@ class LitModule(pl.LightningModule):
             vertices=pred_vertices,
             camera_translation=pred_cam_t,
             images=images,
-            kp_2d=gt_kp_2d,
+            kp_2d=pred_kp_2d,
+            skeleton_map=self.train_pred_skeleton_map,
             sideview=self.hparams.TESTING.SIDEVIEW,
         )
         images_gt = self.renderer.visualize_tb(
@@ -258,6 +292,7 @@ class LitModule(pl.LightningModule):
             camera_translation=gt_cam_t,
             images=images,
             kp_2d=gt_kp_2d,
+            skeleton_map=self.train_gt_skeleton_map,
             sideview=self.hparams.TESTING.SIDEVIEW,
         )
 
@@ -308,6 +343,16 @@ class LitModule(pl.LightningModule):
         # Absolute error (MPJPE)
         error = torch.sqrt(((pred_keypoints_3d - gt_keypoints_3d) ** 2).sum(dim=-1)).mean(dim=-1).cpu().numpy()
 
+
+
+        conf = batch['keypoints'][:, :, -1].unsqueeze(-1).clone()
+        #.cpu().numpy())
+        pred_kp_2d = pred['smpl_joints2d']#.cpu().numpy()
+        gt_kp_2d = batch['keypoints']#.cpu().numpy()
+        kpt_2d_error = torch.sqrt((conf * (pred_kp_2d - gt_kp_2d[:, :, :-1])**2).sum(dim=-1)).cpu().numpy()
+
+
+
         # Reconstuction_error
         r_error, r_error_per_joint = reconstruction_error(
             pred_keypoints_3d.cpu().numpy(),
@@ -330,6 +375,7 @@ class LitModule(pl.LightningModule):
             
         self.val_mpjpe += error.tolist()
         self.val_pampjpe += r_error.tolist()
+        self.rpj += kpt_2d_error[:,25:].tolist()
 
         error_per_joint = torch.sqrt(((pred_keypoints_3d - gt_keypoints_3d) ** 2).sum(dim=-1)).cpu().numpy()
 
@@ -338,6 +384,7 @@ class LitModule(pl.LightningModule):
         self.evaluation_results['v2v'] += v2v.tolist()
         self.evaluation_results['imgname'] += imgnames
         self.evaluation_results['dataset_name'] += dataset_names
+        self.evaluation_results['rpj'] += kpt_2d_error[:,25:].tolist()
 
         if self.hparams.TESTING.SAVE_RESULTS: 
             tolist = lambda x: [i for i in x.cpu().numpy()]
@@ -352,6 +399,7 @@ class LitModule(pl.LightningModule):
             'val/val_mpjpe_step': error.mean(),
             'val/val_pampjpe_step': r_error.mean(),
             'val/val_v2v_step': v2v.mean(),
+            'val/rpj_step': kpt_2d_error.mean(),
         }
 
         return {'val_loss': r_error.mean(), 'log': tensorboard_logs}
@@ -365,13 +413,15 @@ class LitModule(pl.LightningModule):
 
         pred_vertices = output['smpl_vertices'].detach()
         pred_cam_t = output['pred_cam_t'].detach()
-        pred_kp_2d = output['pred_kp2d'].detach() if 'pred_kp2d' in output.keys() else None
+        #pred_kp_2d = output['pred_kp2d'].detach() if 'pred_kp2d' in output.keys() else None
+        pred_kp_2d = output['smpl_joints2d'].detach()
 
         images_pred = self.renderer.visualize_tb(
             vertices=pred_vertices,
             camera_translation=pred_cam_t,
             images=images,
             kp_2d=pred_kp_2d,
+            skeleton_map=self.train_pred_skeleton_map,
             nb_max_img=4,
             sideview=self.hparams.TESTING.SIDEVIEW,
         )
@@ -399,6 +449,7 @@ class LitModule(pl.LightningModule):
         self.val_mpjpe = np.array(self.val_mpjpe)
         self.val_pampjpe = np.array(self.val_pampjpe)
         self.val_v2v = np.array(self.val_v2v)
+        self.rpj = np.array(self.rpj)
 
         for k,v in self.evaluation_results.items():
             self.evaluation_results[k] = np.array(v)
@@ -407,23 +458,27 @@ class LitModule(pl.LightningModule):
 
         avg_mpjpe, avg_pampjpe = 1000 * self.val_mpjpe.mean(), 1000 * self.val_pampjpe.mean()
         avg_v2v = 1000 * self.val_v2v.mean()
+        avg_rpj = 1000 * self.rpj.mean()
 
         logger.info(f'***** Epoch {self.current_epoch} *****')
         logger.info('MPJPE: ' + str(avg_mpjpe))
         logger.info('PA-MPJPE: ' + str(avg_pampjpe))
         logger.info('V2V (mm): ' + str(avg_v2v))
+        logger.info('rpj (pxl): ' + str(avg_rpj))
 
-        avg_mpjpe, avg_pampjpe, avg_v2v = torch.tensor(avg_mpjpe), torch.tensor(avg_pampjpe), torch.tensor(avg_v2v)
+        avg_mpjpe, avg_pampjpe, avg_v2v, avg_rpj = torch.tensor(avg_mpjpe), torch.tensor(avg_pampjpe), torch.tensor(avg_v2v), torch.tensor(avg_rpj)
 
         acc = {
             'val_mpjpe': avg_mpjpe.item(),
             'val_pampjpe': avg_pampjpe.item(),
             'val_v2v': avg_v2v.item(),
+            'rpj': avg_rpj.item(),
         }
         self.val_save_best_results(acc)
 
         # Best model selection criterion - 1.5 * PAMPJPE + MPJPE
-        best_result = 1.5 * avg_pampjpe.clone().cpu().numpy() + avg_mpjpe.clone().cpu().numpy()
+        #best_result = 1.5 * avg_pampjpe.clone().cpu().numpy() + avg_mpjpe.clone().cpu().numpy()
+        best_result = avg_rpj.clone().cpu().numpy()# + avg_mpjpe.clone().cpu().numpy()
         if best_result < self.best_result:
             logger.info(f'Best Model Criteria Met: Current Score -> {best_result} \
                         | Previous Score -> {self.best_result}')
@@ -431,6 +486,7 @@ class LitModule(pl.LightningModule):
             self.best_pampjpe = avg_pampjpe
             self.best_mpjpe = avg_mpjpe
             self.best_v2v = avg_v2v
+            self.best_rpj = avg_rpj
             joblib.dump(
                 self.evaluation_results,
                 os.path.join(self.hparams.LOG_DIR, 
@@ -444,12 +500,13 @@ class LitModule(pl.LightningModule):
             'val/best_pampjpe': self.best_pampjpe,
             'val/best_mpjpe': self.best_mpjpe,
             'val/best_v2v': self.best_v2v,
+            'val/best_rpj': self.best_rpj,
             'step': self.current_epoch,
         }
 
         self.init_evaluation_variables()
 
-        return {'val_loss': avg_pampjpe, 'val_mpjpe': avg_mpjpe, 'val_pampjpe': avg_pampjpe, \
+        return {'val_loss': avg_pampjpe, 'val_mpjpe': avg_mpjpe, 'val_pampjpe': avg_pampjpe, 'val_rpj': avg_rpj, \
                 'val_v2v': avg_v2v, 'log': tensorboard_logs}
 
     def test_step(self, batch, batch_nb):

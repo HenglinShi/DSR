@@ -53,7 +53,8 @@ class Renderer:
         images = images + torch.tensor([0.485, 0.456, 0.406], device=images.device).reshape(1,3,1,1)
         return images
 
-    def visualize_tb(self, vertices, camera_translation, images, kp_2d=None,\
+    def visualize_tb(self, vertices, camera_translation, images, kp_2d=None, \
+                     skeleton_map = 'smpl', \
                      nb_max_img=6, sideview=False):
 
         images = self.de_norm(images)
@@ -78,7 +79,7 @@ class Renderer:
 
             rend_imgs.append(images[i])
             if kp_2d is not None:
-                kp_img = draw_skeleton(images_np[i].copy(), kp_2d=kp_2d[i], dataset='smpl')
+                kp_img = draw_skeleton(images_np[i].copy(), kp_2d=kp_2d[i], dataset=skeleton_map)
                 kp_img = torch.from_numpy(np.transpose(kp_img, (2,0,1))).float()
                 rend_imgs.append(kp_img)
 
@@ -100,9 +101,9 @@ class Renderer:
 
         rend_imgs = make_grid(rend_imgs, nrow=nrow)
 
-        import matplotlib.pyplot as plt
-        plt.imshow((rend_imgs.cpu().numpy().transpose(1, 2, 0) * 255).astype('uint8'))
-        plt.show()
+        #import matplotlib.pyplot as plt
+        #plt.imshow((rend_imgs.cpu().numpy().transpose(1, 2, 0) * 255).astype('uint8'))
+        #plt.show()
 
         return rend_imgs
 
@@ -164,7 +165,7 @@ def draw_skeleton(image, kp_2d, dataset='common', unnormalize=True, thickness=2)
     if unnormalize:
         kp_2d[:,:2] = 0.5 * 224 * (kp_2d[:, :2] + 1) # normalize_2d_kp(kp_2d[:,:2], 224, inv=True)
 
-    kp_2d = np.hstack([kp_2d, np.ones((kp_2d.shape[0], 1))])
+    kp_2d = np.hstack([kp_2d, np.ones((kp_2d.shape[0], 1))]) if kp_2d.shape[1] == 2 else kp_2d
 
     kp_2d[:,2] = kp_2d[:,2] > 0.3
     kp_2d = np.array(kp_2d, dtype=int)

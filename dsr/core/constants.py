@@ -38,56 +38,56 @@ The joints used here are the following:
 """
 JOINT_NAMES = [
 # 25 OpenPose joints (in the order provided by OpenPose)
-'OP Nose',
-'OP Neck',
-'OP RShoulder',
-'OP RElbow',
-'OP RWrist',
-'OP LShoulder',
-'OP LElbow',
-'OP LWrist',
-'OP MidHip',
-'OP RHip',
-'OP RKnee',
-'OP RAnkle',
-'OP LHip',
-'OP LKnee',
-'OP LAnkle',
-'OP REye',
-'OP LEye',
-'OP REar',
-'OP LEar',
-'OP LBigToe',
-'OP LSmallToe',
-'OP LHeel',
-'OP RBigToe',
-'OP RSmallToe',
-'OP RHeel',
+'OP Nose',      # 0
+'OP Neck',      # 1
+'OP RShoulder', # 2
+'OP RElbow',    # 3
+'OP RWrist',    # 4
+'OP LShoulder', # 5
+'OP LElbow',    # 6
+'OP LWrist',    # 7
+'OP MidHip',    # 8
+'OP RHip',      # 9
+'OP RKnee',     # 10
+'OP RAnkle',    # 11
+'OP LHip',      # 12
+'OP LKnee',     # 13
+'OP LAnkle',    # 14
+'OP REye',      # 15
+'OP LEye',      # 16
+'OP REar',      # 17
+'OP LEar',      # 18
+'OP LBigToe',   # 19
+'OP LSmallToe', # 20
+'OP LHeel',     # 21
+'OP RBigToe',   # 22
+'OP RSmallToe', # 23
+'OP RHeel',     # 24
 # 24 Ground Truth joints (superset of joints from different datasets)
-'Right Ankle',
-'Right Knee',
-'Right Hip',
-'Left Hip',
-'Left Knee',
-'Left Ankle',
-'Right Wrist',
-'Right Elbow',
-'Right Shoulder',
-'Left Shoulder',
-'Left Elbow',
-'Left Wrist',
-'Neck (LSP)',
-'Top of Head (LSP)',
-'Pelvis (MPII)',
-'Thorax (MPII)',
-'Spine (H36M)',
-'Jaw (H36M)',
-'Head (H36M)',
-'Nose',
-'Left Eye',
-'Right Eye',
-'Left Ear',
-'Right Ear'
+'Right Ankle',  # 25
+'Right Knee',   # 26
+'Right Hip',    # 27
+'Left Hip',     # 28
+'Left Knee',    # 29
+'Left Ankle',   # 30
+'Right Wrist',  # 31
+'Right Elbow',  # 32
+'Right Shoulder',# 33
+'Left Shoulder',# 34
+'Left Elbow',   # 35
+'Left Wrist',   # 36
+'Neck (LSP)',   # 37
+'Top of Head (LSP)',# 38
+'Pelvis (MPII)',    # 39
+'Thorax (MPII)',    # 40
+'Spine (H36M)',     # 41
+'Jaw (H36M)',       # 42
+'Head (H36M)',      # 43
+'Nose',         # 44
+'Left Eye',     # 45
+'Right Eye',    # 46
+'Left Ear',     # 47
+'Right Ear'     # 48
 ]
 
 # Dict containing the joints in numerical order

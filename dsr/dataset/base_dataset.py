@@ -166,7 +166,10 @@ class BaseDataset(Dataset):
             self.smpl_female = SMPL(SMPL_MODEL_DIR, gender='female', create_transl=False)
 
         self.length = self.scale.shape[0]
+        #self.imgname = self.imgname[:10]
         logger.info(f'Loaded {self.dataset} dataset, num samples {self.length}')
+
+
 
     def augm_params(self):
         """Get augmentation parameters."""
