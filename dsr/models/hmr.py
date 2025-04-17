@@ -15,6 +15,7 @@ class HMR(nn.Module):
             backbone='resnet50',
             img_res=224,
             pretrained=None,
+            num_betas=10,
     ):
         super(HMR, self).__init__()
         self.backbone = eval(backbone)(pretrained=True)
@@ -25,7 +26,7 @@ class HMR(nn.Module):
         if self.smpl_model_type == 'SMPL':
             self.smpl = smpl_head(img_res=img_res)
         elif self.smpl_model_type == 'SMIL':
-            self.smpl = smil_head(img_res=img_res)
+            self.smpl = smil_head(img_res=img_res, num_betas=num_betas)
         if pretrained is not None:
             self.load_pretrained(pretrained)
 

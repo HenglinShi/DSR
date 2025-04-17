@@ -1,9 +1,20 @@
 import os
 import platform
-if not platform.system() == 'Windows':
-    os.environ['PYOPENGL_PLATFORM'] = 'egl'
+
 #os.environ['EGL_DEVICE_ID'] = os.environ['GPU_DEVICE_ORDINAL'].split(',')[0] \
 #    if 'GPU_DEVICE_ORDINAL' in os.environ.keys() else '0'
+
+if platform.system() == 'Windows':
+    pass
+elif platform.system() == 'Linux':
+    if platform.freedesktop_os_release()['ID'] == 'debian':
+        os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
+    else:
+        os.environ['PYOPENGL_PLATFORM'] = 'egl'
+
+
+
+
 
 import cv2
 import torch
@@ -101,9 +112,9 @@ class Renderer:
 
         rend_imgs = make_grid(rend_imgs, nrow=nrow)
 
-        #import matplotlib.pyplot as plt
-        #plt.imshow((rend_imgs.cpu().numpy().transpose(1, 2, 0) * 255).astype('uint8'))
-        #plt.show()
+        import matplotlib.pyplot as plt
+        plt.imshow((rend_imgs.cpu().numpy().transpose(1, 2, 0) * 255).astype('uint8'))
+        plt.show()
 
         return rend_imgs
 

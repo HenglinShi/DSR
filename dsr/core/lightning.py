@@ -32,6 +32,17 @@ class LitModule(pl.LightningModule):
         for key in hparams.keys():
             self.hparams[key] = hparams[key]
 
+        if self.hparams.DATASET.TRAIN_DS == 'minirgbd':
+            self.joint_map = [constants.JOINT_MAP[i] for i in constants.JOINT_NAMES[:25]]
+            self.joint_map = self.joint_map + list(range(0, 25))
+            # self.joint_map = torch.tensor(joints, dtype=torch.long)
+        elif self.hparams.DATASET.TRAIN_DS == 'ima':
+            self.joint_map = [constants.JOINT_MAP[i] for i in constants.JOINT_NAMES]
+            #self.joint_map = torch.tensor(joints, dtype=torch.long)
+        else:
+            self.joint_map = [constants.JOINT_MAP[i] for i in constants.JOINT_NAMES]
+            # self.joint_map = torch.tensor(joints, dtype=torch.long)
+
         if self.hparams.METHOD == 'dsr':
             from ..models import HMR
             from ..losses import DSRLoss
@@ -40,6 +51,7 @@ class LitModule(pl.LightningModule):
                 backbone=self.hparams.DSR.BACKBONE,
                 img_res=self.hparams.DATASET.IMG_RES,
                 pretrained=self.hparams.TRAINING.PRETRAINED,
+                num_betas=self.hparams.DATASET.NUM_BETAS,
             )
             self.loss_fn = DSRLoss(
                 shape_loss_weight=self.hparams.DSR.SHAPE_LOSS_WEIGHT,
@@ -94,22 +106,31 @@ class LitModule(pl.LightningModule):
             self.smpl = SMIL(
                 config.SMIL_MODEL_DIR,
                 batch_size=self.hparams.DATASET.BATCH_SIZE,
+                num_betas=self.hparams.DATASET.NUM_BETAS,
                 create_transl=False
             )
 
             self.smpl_native = SMIL_native(
                 config.SMIL_MODEL_DIR,
                 batch_size=self.hparams.DATASET.BATCH_SIZE,
+                num_betas=self.hparams.DATASET.NUM_BETAS,
                 create_transl=False
             )
 
         if self.hparams.SMPL_MODEL_TYPE == 'SMIL':
             if self.hparams.DATASET.TRAIN_DS == 'ima':
                 self.train_gt_skeleton_map = 'smilima'
-                self.train_pred_skeleton_map = 'smillocal'
+                self.train_pred_skeleton_map = 'smilima'
+            elif self.hparams.DATASET.TRAIN_DS == 'minirgbd':
+                self.train_gt_skeleton_map = 'smilmini'
+                self.train_pred_skeleton_map = 'smilmini'
+
             if self.hparams.DATASET.VAL_DS == 'ima':
                 self.valid_gt_skeleton_map = 'smilima'
-                self.valid_pred_skeleton_map = 'smillocal'
+                self.valid_pred_skeleton_map = 'smilima'
+            elif self.hparams.DATASET.TRAIN_DS == 'minirgbd':
+                self.valid_gt_skeleton_map = 'smilmini'
+                self.valid_pred_skeleton_map = 'smilmini'
         else:
             raise NotImplementedError()
 
@@ -193,8 +214,9 @@ class LitModule(pl.LightningModule):
             body_pose=gt_pose[:, 3:],
             global_orient=gt_pose[:, :3]
         )
-        gt_model_joints = gt_out.joints
+        gt_model_joints = gt_out.joints[:,self.joint_map, :]
         gt_vertices = gt_out.vertices
+
 
         # De-normalize 2D keypoints from [-1,1] to pixel space
         gt_keypoints_2d_orig = gt_keypoints_2d.clone()
@@ -211,11 +233,18 @@ class LitModule(pl.LightningModule):
         )
 
         pred = self.model(inputs)
+        #camera_center = torch.zeros(batch_size, 2, device=self.device)
 
-        camera_center = torch.zeros(batch_size, 2, device=self.device)
-
+        pred['smpl_joints2d'] = pred['smpl_joints2d'][:,self.joint_map,:]
+        pred['smpl_joints3d'] = pred['smpl_joints3d'][:, self.joint_map, :]
         batch['gt_cam_t'] = gt_cam_t
         batch['vertices'] = gt_vertices
+
+        if self.hparams.DATASET.TRAIN_DS == 'minirgbd':
+            #import pdb; pdb.set_trace()
+            pred['smpl_joints3d'][:, 25:, :] = pred['smpl_joints3d'][:, 25:, :] - pred['smpl_joints3d'][:, 25, :].unsqueeze(1)
+            batch['pose_3d'][...,:-1] = batch['pose_3d'][...,:-1] - batch['pose_3d'][:, 0,:-1].unsqueeze(1)
+
 
 
         #gt_keypoints_2d = perspective_projection(
@@ -228,22 +257,22 @@ class LitModule(pl.LightningModule):
 
         #gt_keypoints_2d = gt_keypoints_2d / (self.hparams.DATASET.IMG_RES / 2.)
 
-        gt_native_model_joints = self.smpl_native(
-            betas=gt_betas,
-            body_pose=gt_pose[:, 3:],
-            global_orient=gt_pose[:, :3]
-        ).joints[:, :24, :]
+        #gt_native_model_joints = self.smpl_native(
+        #    betas=gt_betas,
+        #    body_pose=gt_pose[:, 3:],
+        #    global_orient=gt_pose[:, :3]
+        #).joints#[:, :24, :]
 
-        gt_smpl_keypoints_2d = perspective_projection(
-            gt_native_model_joints,
-            rotation=torch.eye(3, device=self.device).unsqueeze(0).expand(batch_size, -1, -1),
-            translation=gt_cam_t,
-            focal_length=self.hparams.DATASET.FOCAL_LENGTH,
-            camera_center=camera_center,
-        )
+        #gt_smpl_keypoints_2d = perspective_projection(
+        #    gt_native_model_joints,
+        #    rotation=torch.eye(3, device=self.device).unsqueeze(0).expand(batch_size, -1, -1),
+        #    translation=gt_cam_t,
+        #    focal_length=self.hparams.DATASET.FOCAL_LENGTH,
+        #    camera_center=camera_center,
+        #)
         # Normalize keypoints to [-1,1]
-        gt_smpl_keypoints_2d = gt_smpl_keypoints_2d / (self.hparams.DATASET.IMG_RES / 2.)
-        batch['smpl_native_keypoints_2d'] = gt_smpl_keypoints_2d
+        #gt_smpl_keypoints_2d = gt_smpl_keypoints_2d / (self.hparams.DATASET.IMG_RES / 2.)
+        #batch['smpl_native_keypoints_2d'] = gt_smpl_keypoints_2d
 
 
 
@@ -273,7 +302,7 @@ class LitModule(pl.LightningModule):
 
         #pred_kp_2d = output['pred_kp2d'].detach() if 'pred_kp2d' in output.keys() else None
         pred_kp_2d = output['smpl_joints2d'].detach()
-        gt_kp_2d = input_batch['smpl_native_keypoints_2d']
+        #gt_kp_2d = input_batch['smpl_native_keypoints_2d']
         gt_kp_2d = input_batch['keypoints']
 
         grphs = input_batch['grph'] if 'grph' in input_batch.keys() else None
@@ -320,46 +349,73 @@ class LitModule(pl.LightningModule):
 
         # Get data from the batch
         inputs = batch['img']
+        gt_pose = batch['pose']  # SMPL pose parameters
+        gt_betas = batch['betas']  # SMPL beta parameters
         curr_batch_size = inputs.shape[0]
 
         with torch.no_grad():
             pred = self.model(inputs)
             pred_vertices = pred['smpl_vertices']
+            pred_keypoints_3d_all = pred['smpl_joints3d'][:,self.joint_map, :][:,25:,:]
 
-        joint_mapper_h36m = constants.H36M_TO_J17 if self.val_ds.dataset == 'mpi-inf-3dhp' \
-            else constants.H36M_TO_J14
+            gt_out = self.smpl(
+                betas=gt_betas,
+                body_pose=gt_pose[:, 3:],
+                global_orient=gt_pose[:, :3]
+            )
+            gt_vertices = gt_out.vertices
+            batch['vertices'] = gt_vertices
 
-        J_regressor_batch = self.J_regressor[None, :].expand(pred_vertices.shape[0], -1, -1)
+        #joint_mapper_h36m = constants.H36M_TO_J17 if self.val_ds.dataset == 'mpi-inf-3dhp' \
+        #    else constants.H36M_TO_J14
+
+        #J_regressor_batch = self.J_regressor[None, :].expand(pred_vertices.shape[0], -1, -1)
 
         # For 3DPW get the 14 common joints from the rendered shape
-        gt_keypoints_3d = batch['pose_3d'].cuda()
+        gt_keypoints_3d_all = batch['pose_3d'].cuda()
 
         # Get 14 predicted joints from the mesh
-        pred_keypoints_3d = torch.matmul(J_regressor_batch, pred_vertices)
-        pred_pelvis = pred_keypoints_3d[:, [0], :].clone()
-        pred_keypoints_3d = pred_keypoints_3d[:, joint_mapper_h36m, :]
-        pred_keypoints_3d = pred_keypoints_3d - pred_pelvis
+        #pred_keypoints_3d = torch.matmul(J_regressor_batch, pred_vertices)
+        #pred_pelvis = pred_keypoints_3d[:, [0], :].clone()
+        #pred_keypoints_3d = pred_keypoints_3d[:, joint_mapper_h36m, :]
+        #pred_keypoints_3d = pred_keypoints_3d - pred_pelvis
+        #gt_keypoints_3d = gt_keypoints_3d_all[:, joint_mapper_h36m, :-1]
 
-        # Absolute error (MPJPE)
-        error = torch.sqrt(((pred_keypoints_3d - gt_keypoints_3d) ** 2).sum(dim=-1)).mean(dim=-1).cpu().numpy()
-
-
-
-        conf = batch['keypoints'][:, :, -1].unsqueeze(-1).clone()
-        #.cpu().numpy())
-        pred_kp_2d = pred['smpl_joints2d']#.cpu().numpy()
-        gt_kp_2d = batch['keypoints']#.cpu().numpy()
-        kpt_2d_error = torch.sqrt((conf * (pred_kp_2d - gt_kp_2d[:, :, :-1])**2).sum(dim=-1)).cpu().numpy()
-
-
-
+        ## Absolute error (MPJPE)
+        #error = torch.sqrt(((pred_keypoints_3d - gt_keypoints_3d) ** 2).sum(dim=-1)).mean(dim=-1).cpu().numpy()
         # Reconstuction_error
+        #r_error, r_error_per_joint = reconstruction_error(
+        #    pred_keypoints_3d.cpu().numpy(),
+        #    gt_keypoints_3d.cpu().numpy(),
+        #    reduction=None,
+        #)
+        #error_all_j = 0
+        #r_error_all_j, r_error_per_joint_all_j = 0, 0
+        pred_pelvis = pred_keypoints_3d_all[:,0,:]
+        gt_pelvis = gt_keypoints_3d_all[:,0,:-1]
+        pred_keypoints_3d = pred_keypoints_3d_all - pred_pelvis[:,None,:]
+        gt_keypoints_3d = gt_keypoints_3d_all[..., :-1] - gt_pelvis[:,None,:]
+        error = torch.sqrt((gt_keypoints_3d_all[...,-1, None] * ((pred_keypoints_3d -gt_keypoints_3d) ** 2)).sum(dim=-1)).mean(dim=-1).cpu().numpy()
+
         r_error, r_error_per_joint = reconstruction_error(
-            pred_keypoints_3d.cpu().numpy(),
-            gt_keypoints_3d.cpu().numpy(),
-            reduction=None,
-        )
-        
+                pred_keypoints_3d.cpu().numpy(),
+                gt_keypoints_3d.cpu().numpy(),
+                reduction=None,
+            )
+
+        conf = batch['keypoints'][:, :, -1].clone()
+        pred_kp_2d = pred['smpl_joints2d'][:,self.joint_map, :]#.cpu().numpy()
+        gt_kp_2d = batch['keypoints']#.cpu().numpy()
+
+        pred_kp_2d_normalized = 0.5 * 224 * (pred_kp_2d[..., :2] + 1)
+        gt_kp_2d_normalized = 0.5 * 224 * (gt_kp_2d  [..., :2] + 1)
+
+        #kpt_2d_error_unnormalized = torch.sqrt((conf * (pred_kp_2d - gt_kp_2d[:, :, :-1])**2).sum(dim=-1))#.cpu().numpy()
+        #kpt_2d_error = np.linalg.norm(pred_kp_2d_normalized - gt_kp_2d_normalized, ord=2, axis=-1)[conf.squeeze(-1).cpu().numpy()>0].mean()
+
+        kpt_2d_error = (torch.sqrt((conf.unsqueeze(-1) * (pred_kp_2d_normalized - gt_kp_2d_normalized) ** 2).sum(dim=-1)).sum(-1)/conf.sum(dim=-1)).cpu().numpy()  # .cpu().numpy()
+        #kpt_2d_error = torch.sqrt(((pred_kp_2d_normalized - gt_kp_2d_normalized) ** 2).sum(-1))[conf>0].cpu().numpy()
+
         # Per-vertex error
         if 'vertices' in batch.keys():
             gt_vertices = batch['vertices'].cuda()
@@ -375,16 +431,16 @@ class LitModule(pl.LightningModule):
             
         self.val_mpjpe += error.tolist()
         self.val_pampjpe += r_error.tolist()
-        self.rpj += kpt_2d_error[:,25:].tolist()
+        self.rpj += kpt_2d_error.tolist()
 
-        error_per_joint = torch.sqrt(((pred_keypoints_3d - gt_keypoints_3d) ** 2).sum(dim=-1)).cpu().numpy()
+        error_per_joint = torch.sqrt((gt_keypoints_3d_all[...,-1, None] * ((pred_keypoints_3d - gt_keypoints_3d) ** 2)).sum(dim=-1)).cpu().numpy()
 
-        self.evaluation_results['mpjpe'] += error_per_joint[:,:14].tolist()
-        self.evaluation_results['pampjpe'] += r_error_per_joint[:,:14].tolist()
+        self.evaluation_results['mpjpe'] += error_per_joint.tolist()
+        self.evaluation_results['pampjpe'] += r_error_per_joint.tolist()
         self.evaluation_results['v2v'] += v2v.tolist()
         self.evaluation_results['imgname'] += imgnames
         self.evaluation_results['dataset_name'] += dataset_names
-        self.evaluation_results['rpj'] += kpt_2d_error[:,25:].tolist()
+        self.evaluation_results['rpj'] += kpt_2d_error.tolist()
 
         if self.hparams.TESTING.SAVE_RESULTS: 
             tolist = lambda x: [i for i in x.cpu().numpy()]
@@ -414,14 +470,14 @@ class LitModule(pl.LightningModule):
         pred_vertices = output['smpl_vertices'].detach()
         pred_cam_t = output['pred_cam_t'].detach()
         #pred_kp_2d = output['pred_kp2d'].detach() if 'pred_kp2d' in output.keys() else None
-        pred_kp_2d = output['smpl_joints2d'].detach()
+        pred_kp_2d = output['smpl_joints2d'][:,self.joint_map,:].detach()
 
         images_pred = self.renderer.visualize_tb(
             vertices=pred_vertices,
             camera_translation=pred_cam_t,
             images=images,
             kp_2d=pred_kp_2d,
-            skeleton_map=self.train_pred_skeleton_map,
+            skeleton_map=self.valid_pred_skeleton_map,
             nb_max_img=4,
             sideview=self.hparams.TESTING.SIDEVIEW,
         )
@@ -458,7 +514,7 @@ class LitModule(pl.LightningModule):
 
         avg_mpjpe, avg_pampjpe = 1000 * self.val_mpjpe.mean(), 1000 * self.val_pampjpe.mean()
         avg_v2v = 1000 * self.val_v2v.mean()
-        avg_rpj = 1000 * self.rpj.mean()
+        avg_rpj = self.rpj.mean()
 
         logger.info(f'***** Epoch {self.current_epoch} *****')
         logger.info('MPJPE: ' + str(avg_mpjpe))
@@ -512,8 +568,8 @@ class LitModule(pl.LightningModule):
     def test_step(self, batch, batch_nb):
         return self.validation_step(batch, batch_nb)
 
-    def test_epoch_end(self, outputs):
-        return self.validation_epoch_end(outputs)
+    def on_test_epoch_end(self):
+        return self.on_validation_epoch_end()
 
     def configure_optimizers(self):
         return torch.optim.Adam(

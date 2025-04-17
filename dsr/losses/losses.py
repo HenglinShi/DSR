@@ -269,9 +269,12 @@ class DSRLoss(nn.Module):
 
             # SR-Vertex
             if rend_dim > 1:
-                self.criterion_dsr_c.weight = cur_dsr_c_class_weight
-                rend_dsr_c = cur_rend_out[1:,:3].mean(1).unsqueeze(0)
-                loss_dsr_c[idx] = self.criterion_dsr_c(rend_dsr_c, cur_dsr_c_img_label)
+                if len(valid_labels_dsr_c[idx]) == 0:
+                    loss_dsr_c[idx] = 0.0
+                else:
+                    self.criterion_dsr_c.weight = cur_dsr_c_class_weight
+                    rend_dsr_c = cur_rend_out[1:,:3].mean(1).unsqueeze(0)
+                    loss_dsr_c[idx] = self.criterion_dsr_c(rend_dsr_c, cur_dsr_c_img_label)
 
                 if self.DEBUG:
 
@@ -291,23 +294,29 @@ class DSRLoss(nn.Module):
                                                            dtype='uint8')
                     if smpl_joints2d is not None:
                         debug_kpt2d = 0.5 * 224 * (smpl_joints2d[idx, 25:, :].detach().cpu().numpy() + 1)
-                        debug_mc_mask = vis_keypoints(debug_mc_mask, debug_kpt2d)
-                        debug_mc_render = vis_keypoints(debug_mc_render, debug_kpt2d)
+                        #debug_mc_mask = vis_keypoints(debug_mc_mask, debug_kpt2d)
+                        #debug_mc_render = vis_keypoints(debug_mc_render, debug_kpt2d)
 
-                    axs[1,0].imshow(debug_mc_mask)
-                    axs[1,1].imshow(debug_mc_render)
 
-                    debug_c_render1 = rend_dsr_c[0, 0, ...]
-                    debug_c_render2 = rend_dsr_c[0, 3, ...]
+
+                    debug_c_render0 = rend_dsr_c[0, 0, ...]
+                    debug_c_render1 = rend_dsr_c[0, 1, ...]
+                    debug_c_render2 = rend_dsr_c[0, 2, ...]
+                    debug_c_render3 = rend_dsr_c[0, 3, ...]
+
+                    debug_c_render0 = np.ascontiguousarray(debug_c_render0.detach().cpu().numpy() * 255, dtype='uint8')
                     debug_c_render1 = np.ascontiguousarray(debug_c_render1.detach().cpu().numpy() * 255, dtype='uint8')
                     debug_c_render2 = np.ascontiguousarray(debug_c_render2.detach().cpu().numpy() * 255, dtype='uint8')
+                    debug_c_render3 = np.ascontiguousarray(debug_c_render3.detach().cpu().numpy() * 255, dtype='uint8')
 
                     if smpl_joints2d is not None:
                         debug_kpt2d = 0.5 * 224 * (smpl_joints2d[idx, 25:, :].detach().cpu().numpy() + 1)
-                        debug_c_render1 = vis_keypoints(debug_c_render1, debug_kpt2d)
-                        debug_c_render2 = vis_keypoints(debug_c_render2, debug_kpt2d)
-                    axs[1, 2].imshow(debug_c_render1)
-                    axs[1, 3].imshow(debug_c_render1)
+                        #debug_c_render1 = vis_keypoints(debug_c_render1, debug_kpt2d)
+                        #debug_c_render2 = vis_keypoints(debug_c_render2, debug_kpt2d)
+                    axs[1, 0].imshow(debug_c_render0)
+                    axs[1, 1].imshow(debug_c_render1)
+                    axs[1, 2].imshow(debug_c_render2)
+                    axs[1, 3].imshow(debug_c_render3)
                     fig.set_figheight(30)
                     fig.set_figwidth(30)
                     plt.show()
@@ -316,6 +325,7 @@ class DSRLoss(nn.Module):
 
             if torch.isnan(loss_dsr_c[idx]) or torch.isnan(loss_dsr_mc[idx]) or \
                torch.isinf(loss_dsr_c[idx]) or torch.isinf(loss_dsr_mc[idx]):
+                continue
                 imgs, imgname, grphs = gt_batch['img'], gt_batch['imgname'], gt_batch['grph']
                 debug_rend_out(imgs, grphs, cur_rend_out, cur_dsr_mc_img_label, \
                                cur_dsr_mc_dist_mat, idx)
@@ -631,10 +641,10 @@ def keypoint_3d_loss(
     conf = conf[has_pose_3d == 1]
     pred_keypoints_3d = pred_keypoints_3d[has_pose_3d == 1]
     if len(gt_keypoints_3d) > 0:
-        gt_pelvis = (gt_keypoints_3d[:, 2,:] + gt_keypoints_3d[:, 3,:]) / 2
-        gt_keypoints_3d = gt_keypoints_3d - gt_pelvis[:, None, :]
-        pred_pelvis = (pred_keypoints_3d[:, 2,:] + pred_keypoints_3d[:, 3,:]) / 2
-        pred_keypoints_3d = pred_keypoints_3d - pred_pelvis[:, None, :]
+        #gt_pelvis = (gt_keypoints_3d[:, 2,:] + gt_keypoints_3d[:, 3,:]) / 2
+        #gt_keypoints_3d = gt_keypoints_3d - gt_pelvis[:, None, :]
+        #pred_pelvis = (pred_keypoints_3d[:, 2,:] + pred_keypoints_3d[:, 3,:]) / 2
+        #pred_keypoints_3d = pred_keypoints_3d - pred_pelvis[:, None, :]
         return (conf * criterion(pred_keypoints_3d, gt_keypoints_3d)).mean()
     else:
         return torch.FloatTensor(1).fill_(0.).to(pred_keypoints_3d.device)

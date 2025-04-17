@@ -774,49 +774,18 @@ from smplx.joint_names import SMPL_JOINT_NAMES
 from ..core import constants
 
 def get_smillocal_skeleton():
-    skeletons_smil = get_smpl_skeleton()
-    joints = [constants.JOINT_MAP[i] for i in constants.JOINT_NAMES]
-    #print (0)
-
-
-    skeleton_map = np.array(
-        [
-            [0, 1],
-            [0, 15],
-            [0, 16],
-            [1, 2],
-            [1, 5],
-            [2, 3],
-            [3, 4],
-            [5, 6],
-            [6, 7],
-            [1, 8],
-            [8, 9],
-            [8, 12],
-            [9, 10],
-            [10, 11],
-            [11, 24],
-            [11, 22],
-            [22, 23],
-            [12, 13],
-            [13, 14],
-            [14, 21],
-            [14, 19],
-        ]
-    )
-    skeleton_map = np.concatenate((skeleton_map, get_smilima_skeleton()), axis=0)
     return get_smilima_skeleton()#skeleton_map
 
 
 
 
+def get_smilmini_skeleton():
 
-
+    return get_smpl_skeleton() + 25
 
 
 def get_smilima_skeleton():
-    #skeletons_native_smpl = get_native_smpl_skeleton()
-    JOINT_IDS = {SMPL_JOINT_NAMES[i]: i for i in range(len(SMPL_JOINT_NAMES))}
+
     JOINT_NAMES_IMA = [
                     'Left Hip', #'left_hip',         #0
                     'Left Eye', #'left_eye',         #1
@@ -838,7 +807,7 @@ def get_smilima_skeleton():
                     'Nose', #'nose',             #17
                 ]
 
-    skeleton = np.array(
+    skeleton_ima = np.array(
         [
             [0, 2],
             [0, 15],
@@ -862,7 +831,7 @@ def get_smilima_skeleton():
     )
     ima_inds = np.array([constants.JOINT_NAMES.index(key) for key in JOINT_NAMES_IMA])
 
-    skeleton = [[ima_inds[i[0]], ima_inds[i[1]]] for i in skeleton]
+    skeleton = [[ima_inds[i[0]], ima_inds[i[1]]] for i in skeleton_ima]
 
     return skeleton
 

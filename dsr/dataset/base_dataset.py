@@ -6,7 +6,7 @@ from os.path import join
 from loguru import logger
 from torch.utils.data import Dataset
 from torchvision.transforms import Normalize
-
+import platform
 from ..core import constants
 from ..core.config import DATASET_FILES, DATASET_FOLDERS, SMPL_MODEL_DIR, \
                           JOINT_REGRESSOR_H36M, DATASET_NPZ_PATH
@@ -27,7 +27,7 @@ class BaseDataset(Dataset):
     You need to update the path to each dataset in utils/config.py.
     """
 
-    def __init__(self, options, method, dataset, ignore_3d=False, use_augmentation=True, 
+    def __init__(self, options, method, dataset, ignore_3d=False, use_augmentation=True,
                  is_train=True, num_images=0):
         super(BaseDataset, self).__init__()
         self.dataset = dataset
@@ -40,21 +40,29 @@ class BaseDataset(Dataset):
         logger.info(f'Loading npz file from {ds_file}...')
         self.data = np.load(ds_file)
         self.smpl = SMPL(SMPL_MODEL_DIR, batch_size=1, create_transl=False)
-        self.imgname = np.char.add('images/', self.data['imgname'])
+
+        if self.dataset == 'minirgbd':
+            self.imgname = np.char.add(np.char.add(self.data['subjects_'], '/rgb/'), self.data['imgname'])
+        else:
+            self.imgname = np.char.add('images/', self.data['imgname'])
 
         if self.method == 'dsr' and self.is_train == True:
             # initialize graphonomy filenames
             if dataset == 'ima':
                 self.grphnames = self.data['imgname']
                 self.videonames = self.data['video_name']
-                grphnames = np.char.add(np.char.add(self.videonames, '/'), self.grphnames)
+                self.grphnames = np.char.add(np.char.add(self.videonames, '/'), self.grphnames)
+                self.grphnames = np.char.add('grph_sequences/', self.grphnames)
+            elif dataset == 'minirgbd':
+                self.grphnames = np.char.add(np.char.add(self.data['subjects_'], '/grph_sequences/'), self.data['imgname'])
             else:
-                grphnames = self.data['imgname']
+                self.grphnames = self.data['imgname']
+                self.grphnames = np.char.add('grph_sequences/', self.grphnames)
 
-            if grphnames[0].endswith('jpg'):
-                grphnames = np.char.strip(grphnames, 'jpg')
-                grphnames = np.char.add(grphnames, 'png')
-            self.grphnames = np.char.add('grph_sequences/', grphnames)
+            if self.grphnames[0].endswith('jpg'):
+                self.grphnames = np.char.rstrip(self.grphnames, 'jpg')
+                self.grphnames = np.char.add(self.grphnames, 'png')
+            #self.grphnames = np.char.add('grph_sequences/', grphnames)
 
         if num_images > 0:
             # select a random subset of the dataset
@@ -91,8 +99,8 @@ class BaseDataset(Dataset):
         
         # Get gt SMPL parameters, if available
         try:
-            self.pose = self.data['pose'].astype(np.float)
-            self.betas = self.data['shape'].astype(np.float)
+            self.pose = self.data['pose'].astype('float')
+            self.betas = self.data['shape'][:,:10].astype('float')
             if 'has_smpl' in self.data:
                 self.has_smpl = self.data['has_smpl']
             else:
@@ -166,7 +174,8 @@ class BaseDataset(Dataset):
             self.smpl_female = SMPL(SMPL_MODEL_DIR, gender='female', create_transl=False)
 
         self.length = self.scale.shape[0]
-        #self.imgname = self.imgname[:10]
+        if platform.system() == 'Windows':
+            self.imgname = self.imgname[:16]
         logger.info(f'Loaded {self.dataset} dataset, num samples {self.length}')
 
 
@@ -466,6 +475,8 @@ class BaseDataset(Dataset):
                 pose_3d = pose_3d - pelvis
                 item['pose_3d'] = pose_3d[0].float()
                 item['vertices'] = gt_vertices[0].float()
+            elif self.dataset in ['minirgbd', 'ima']:
+                item['pose_3d'] = item['pose_3d'].float()
             else:
                 item['pose_3d'] = item['pose_3d'][self.joint_mapper_gt, :-1].float()
         try:

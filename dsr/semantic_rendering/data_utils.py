@@ -85,23 +85,27 @@ def get_dsr_c_probPrior(merge=True, merge_map=None):
     rp_textures_gcl = np.swapaxes(rp_textures_gcl, 0, 1)
     return rp_textures_gcl
 
-def convert_grph_to_labels(grph, keypoints=None, merge=True, merge_map=None, merge_label=None):
+def convert_grph_to_labels(grph, keypoints=None, merge=True, merge_map=None, merge_label=None, threshold=60):
 
     grph = remove_background_from_keypoints(grph, keypoints)
 
     new_grph = np.zeros_like(grph, dtype=np.float32)
-    valid_labels = constants.GRPH_LABEL
+    #valid_labels = constants.GRPH_LABEL
+    valid_labels = []
     num_pixels_per_label = np.zeros(len(constants.GRPH_LABEL), dtype=np.float32)
 
-    for idx, sel_part in enumerate(valid_labels):
+    for idx, sel_part in enumerate(constants.GRPH_LABEL):
         valid_index = np.sum(grph == constants.GRPH_COLOR_MAP[sel_part], axis=2) == 3
         num_pixels = np.flatnonzero(valid_index).size
 
-        if num_pixels > 0: # Thresholding number of pixels for each label (keep threshold 0 for now)
-            #print(f'Number of pixels in {sel_part} -> {num_pixels}')
-            num_pixels_per_label[idx] = num_pixels
-            new_grph[valid_index] = np.array([idx, idx, idx])
 
+        if num_pixels > threshold: # Thresholding number of pixels for each label (keep threshold 0 for now)
+            #print(f'Number of pixels in {sel_part} -> {num_pixels}')
+            new_grph[valid_index] = np.array([idx, idx, idx])
+            valid_labels.append(sel_part)
+            num_pixels_per_label[idx] = num_pixels
+
+    valid_labels_merge = []
     if merge == True:
         merge_grph = np.zeros_like(grph, dtype=np.float32)
         merge_num_pixels_per_label = np.zeros(len(merge_map.keys()), dtype=np.float32)
@@ -110,12 +114,15 @@ def convert_grph_to_labels(grph, keypoints=None, merge=True, merge_map=None, mer
                 merge_grph[new_grph == value] = int(key)
                 merge_num_pixels_per_label[int(key)] += num_pixels_per_label[value]
 
+            if merge_num_pixels_per_label[int(key)] > 0:
+                valid_labels_merge.append(merge_label[int(key)])
+
         new_grph, num_pixels_per_label = merge_grph, merge_num_pixels_per_label
-        valid_labels = merge_label
+        valid_labels = valid_labels_merge
 
     new_grph = new_grph[:,:,0]
 
-    cls_ratio = get_class_ratio(num_pixels_per_label)
+    cls_ratio = get_class_ratio(num_pixels_per_label, threshold=threshold)
 
     return new_grph, valid_labels, cls_ratio
 

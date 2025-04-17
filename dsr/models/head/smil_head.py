@@ -14,17 +14,17 @@ class SMIL(_SMPL):
 
     def __init__(self, *args, **kwargs):
         super(SMIL, self).__init__(*args, **kwargs)
-        joints = [constants.JOINT_MAP[i] for i in constants.JOINT_NAMES]
+        #joints = [constants.JOINT_MAP[i] for i in constants.JOINT_NAMES]
         J_regressor_extra = np.load(config.JOINT_REGRESSOR_TRAIN_EXTRA)
         self.register_buffer('J_regressor_extra', torch.tensor(J_regressor_extra, dtype=torch.float32))
-        self.joint_map = torch.tensor(joints, dtype=torch.long)
+        #self.joint_map = torch.tensor(joints, dtype=torch.long)
 
     def forward(self, *args, **kwargs):
         kwargs['get_skin'] = True
         smpl_output = super(SMIL, self).forward(*args, **kwargs)
         extra_joints = vertices2joints(self.J_regressor_extra, smpl_output.vertices)
         joints = torch.cat([smpl_output.joints, extra_joints], dim=1)
-        joints = joints[:, self.joint_map, :]
+        #joints = joints[:, self.joint_map, :]
         output = ModelOutput(vertices=smpl_output.vertices,
                              global_orient=smpl_output.global_orient,
                              body_pose=smpl_output.body_pose,
@@ -35,9 +35,9 @@ class SMIL(_SMPL):
 
 
 class smil_head(nn.Module):
-    def __init__(self, focal_length=5000., img_res=224):
+    def __init__(self, focal_length=5000., img_res=224, num_betas=10):
         super(smil_head, self).__init__()
-        self.smpl = SMIL(config.SMIL_MODEL_DIR, create_transl=False)
+        self.smpl = SMIL(config.SMIL_MODEL_DIR, num_betas=num_betas, create_transl=False)
         self.faces = torch.from_numpy(self.smpl.faces.astype('int32')[None])
         self.focal_length = focal_length
         self.img_res = img_res

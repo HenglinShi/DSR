@@ -202,6 +202,13 @@ def flip_kp(kp):
         flipped_parts = constants.J43_FLIP_PERM
     elif len(kp) == 18:
         flipped_parts = constants.J18_FLIP_PERM
+    elif len(kp) == 50:
+        flipped_parts = constants.OP_MINIRGBD_PERM
+    elif len(kp) == 25:
+        flipped_parts = constants.MINI_RGBD_PERM
+    else:
+        print (len(kp))
+        raise NotImplementedError()
     kp = kp[flipped_parts]
     kp[:, 0] = - kp[:, 0]
     return kp
